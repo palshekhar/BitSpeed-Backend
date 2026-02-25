@@ -33,20 +33,16 @@ let db;
 app.post('/identify', async (req, res) => {
     const { email, phoneNumber } = req.body;
 
-    // Validate input (at least one must be present)
     if (!email && !phoneNumber) {
         return res.status(400).json({ error: "Email or phoneNumber is required" });
     }
 
     try {
-        // 1. Find all contacts that match either email OR phone
-        // We use parameterized queries (?) to prevent SQL injection
         const matchingContacts = await db.all(
             `SELECT * FROM Contact WHERE email = ? OR phoneNumber = ?`,
             [email, phoneNumber]
         );
 
-        // --- SCENARIO 1: No matches found (New Customer) ---
         if (matchingContacts.length === 0) {
             const result = await db.run(
                 `INSERT INTO Contact (email, phoneNumber, linkPrecedence, createdAt, updatedAt) VALUES (?, ?, 'primary', ?, ?)`,
