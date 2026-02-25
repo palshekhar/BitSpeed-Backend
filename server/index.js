@@ -64,10 +64,6 @@ app.post('/identify', async (req, res) => {
             });
         }
 
-        // --- SCENARIO 2: Matches found (Identify Logic) ---
-
-        // A. Identify the "Root" Primary IDs
-        // For every match: if it's primary, use its ID. If secondary, use its linkedId.
         let primaryIds = new Set();
         matchingContacts.forEach(c => {
             if (c.linkPrecedence === 'primary') {
@@ -77,27 +73,22 @@ app.post('/identify', async (req, res) => {
             }
         });
 
-        // Fetch the actual Primary rows to compare dates
-        // We order by createdAt ASC so the oldest is first
+       
         const primaries = await db.all(
             `SELECT * FROM Contact WHERE id IN (${Array.from(primaryIds).join(',')}) ORDER BY createdAt ASC`
         );
 
-        const primaryContact = primaries[0]; // The Oldest is the Winner
+        const primaryContact = primaries[0]; 
 
-        // B. Handle Merging (If multiple primaries were found)
-        // If we found 2 different primary chains (e.g. one via email, one via phone), merge them.
+      
         if (primaries.length > 1) {
-            // All other primaries must become secondary to the first one
             const secondaryPrimaries = primaries.slice(1);
             
             for (let sec of secondaryPrimaries) {
-                // Update the contact itself to be secondary
                 await db.run(
                     `UPDATE Contact SET linkPrecedence = 'secondary', linkedId = ?, updatedAt = ? WHERE id = ?`,
                     [primaryContact.id, new Date().toISOString(), sec.id]
                 );
-                // Update its children to point to the new Primary
                 await db.run(
                     `UPDATE Contact SET linkedId = ?, updatedAt = ? WHERE linkedId = ?`,
                     [primaryContact.id, new Date().toISOString(), sec.id]
@@ -105,14 +96,12 @@ app.post('/identify', async (req, res) => {
             }
         }
 
-        // C. Check if we need to create a NEW Secondary row
-        // Retrieve ALL contacts now linked to this primary (including the ones we just merged)
+       
         const allLinkedContacts = await db.all(
             `SELECT * FROM Contact WHERE id = ? OR linkedId = ?`,
             [primaryContact.id, primaryContact.id]
         );
 
-        // Check if the incoming email/phone is already known in this cluster
         const existingEmails = new Set(allLinkedContacts.map(c => c.email).filter(Boolean));
         const existingPhones = new Set(allLinkedContacts.map(c => c.phoneNumber).filter(Boolean));
 
@@ -130,8 +119,6 @@ app.post('/identify', async (req, res) => {
             if (phoneNumber) existingPhones.add(phoneNumber);
         }
 
-        // --- FINAL RESPONSE FORMATTING ---
-        // Refresh the list of secondaries for the ID list
         const finalSecondaries = await db.all(
             `SELECT id FROM Contact WHERE linkedId = ?`,
             [primaryContact.id]
